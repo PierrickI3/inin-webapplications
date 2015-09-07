@@ -1,0 +1,8 @@
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+$extractDir = '<%= @destination %>'
+$zip = [System.IO.Compression.ZipFile]::OpenRead('<%= @zipfile %>')
+
+foreach ($item in $zip.Entries) {
+    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($item,(Join-Path -Path $extractDir -ChildPath $item.FullName),$true)
+}

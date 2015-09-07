@@ -1,0 +1,25 @@
+
+## MAC OS
+.DS_Store
+
+## TEXTMATE
+*.tmproj
+tmtags
+.tmp/
+
+## EMACS
+*~
+\#*
+.\#*
+
+## VIM
+*.swp
+tags
+
+## RSPEC
+spec/fixtures
+pkg
+
+## COVERALLS
+coverage
+/tests/Test without publishing.txt
