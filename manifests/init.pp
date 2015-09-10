@@ -225,7 +225,7 @@ class webapplications::install (
               </rewrite> \
             </system.webServer> \
           </location>",
-        after   => '</system.webServer>',
+        after   => '</webFarms>',
         require => File['C:/inetpub/wwwroot/ININApps/web.config'],
       }
 
