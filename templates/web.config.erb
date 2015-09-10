@@ -1,0 +1,85 @@
+<configuration>
+	<system.webServer>
+	<rewrite>
+		<rules>
+			<rule name="inin-api-rewrite" enabled="true" stopProcessing="true">
+				<match url="(?:^(.*/)api|^api)/([^/]+)(/.*)" />
+				<serverVariables>
+					<set name="WEB_APP" value="{R:1}" />
+					<set name="ICWS_HOST" value="{R:2}" />
+					<set name="HTTP_ININ-ICWS-Original-URL"
+					value="{MapScheme:{HTTPS}}://{HTTP_HOST}{UNENCODED_URL}" replace="false" />
+				</serverVariables>
+				<action type="Rewrite" url="http://{ICWS_HOST}:8018{R:3}"
+				logRewrittenUrl="true" />
+			</rule>
+		</rules>
+		<outboundRules>
+			<rule name="inin-cookie-paths">
+				<match serverVariable="RESPONSE_Set_Cookie" pattern="(.*)Path=(/icws.*)" />
+				<action type="Rewrite" value="{R:1}Path=/{WEB_APP}api/{ICWS_HOST}{R:2}" />
+			</rule>
+			<rule name="inin-location-paths">
+				<match serverVariable="RESPONSE_Location" pattern="^/icws/.*" />
+				<action type="Rewrite" value="/{WEB_APP}api/{ICWS_HOST}{R:0}" />
+			</rule>
+		</outboundRules>
+		<rewriteMaps>
+			<rewriteMap name="MapScheme">
+				<add key="on" value="https" />
+				<add key="off" value="http" />
+			</rewriteMap>
+		</rewriteMaps>
+	</rewrite>
+	<security>
+		<requestFiltering allowHighBitCharacters="true" />
+	</security>
+	<httpCompression>
+		<staticTypes>
+			<add mimeType="application/x-javascript" enabled="true" />
+		</staticTypes>
+	</httpCompression>
+</system.webServer>
+<location path="client/lib">
+	<system.webServer>
+	<staticContent>
+		<clientCache cacheControlMode="UseMaxAge" cacheControlMaxAge="365.00:00:00" />
+	</staticContent>
+</system.webServer>
+</location>
+<location path="client/nls">
+	<system.webServer>
+	<staticContent>
+		<clientCache cacheControlMode="UseMaxAge" cacheControlMaxAge="365.00:00:00" />
+	</staticContent>
+</system.webServer>
+</location>
+<location path="client/addins">
+	<system.webServer>
+	<staticContent>
+		<clientCache cacheControlMode="DisableCache" />
+	</staticContent>
+</system.webServer>
+</location>
+<location path="client/config">
+	<system.webServer>
+	<staticContent>
+		<clientCache cacheControlMode="DisableCache" />
+	</staticContent>
+</system.webServer>
+</location>
+<location path="client/appSettings.json">
+	<system.webServer>
+	<staticContent>
+		<clientCache cacheControlMode="DisableCache" />
+	</staticContent>
+</system.webServer>
+</location>
+<location path="client/index.html">
+	<system.webServer>
+	<staticContent>
+		<clientCache cacheControlMode="UseMaxAge" cacheControlMaxAge="0.00:15:00" />
+	</staticContent>
+</system.webServer>
+</location>
+</configuration>
