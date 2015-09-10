@@ -1,7 +1,7 @@
 include pget
 include unzip
 
-# == Class: cicwebapplications::install
+# == Class: webapplications::install
 #
 # Installs CIC Web applications and configures them.
 # CIC Web Applications Zip files (i.e. CIC_Web_Applications_2015_R3.iso) should be in a shared folder 
@@ -28,7 +28,7 @@ include unzip
 # Copyright 2015, Interactive Intelligence Inc.
 #
 
-class cicwebapplications::install (
+class webapplications::install (
   $ensure = installed,
 )
 {
@@ -135,13 +135,13 @@ class cicwebapplications::install (
       # Install the Microsoft Application Request Routing Version 3 for IIS
       package {'Microsoft Application Request Routing V3':
         ensure          => installed,
-        source          => "${cache_dir}/requestRouter_x64.msi",
+        source          => "${cache_dir}/requestRouter_amd64.msi",
         install_options => [
           '/l*v',
-          'c:\\windows\\logs\\requestRouter_x64.log',
+          'c:\\windows\\logs\\requestRouter_amd64.log',
         ],
         provider        => 'windows',
-        require         => Pget['Microsoft Application Request Routing V3'],
+        require         => Pget['Download Microsoft Application Request Routing V3'],
       }
 
       # Enable proxy settings
@@ -199,10 +199,9 @@ class cicwebapplications::install (
       ##############
 
       # Add web.config file
-      file {'web.config':
+      file {'C:/inetpub/wwwroot/ININApps/web.config':
         ensure  => present,
-        path    => 'C:/inetpub/wwwroot/ININApps',
-        content => template('inin-webapplications/web.config.erb'),
+        content => template('webapplications/web.config.erb'),
         require => [
           Iis_Vdir['ININApps/'],
           Exec['Enable proxy settings'],
@@ -227,13 +226,21 @@ class cicwebapplications::install (
             </system.webServer> \
           </location>",
         after   => '</system.webServer>',
-        require => File['web.config'],
+        require => File['C:/inetpub/wwwroot/ININApps/web.config'],
       }
 
+      # Reset IIS
       exec {'iisreset':
         path        => 'C:/Windows/System32',
         refreshonly => true,
         require     => File_Line['ININApps Server Variables'],
+      }
+
+      # Add shortcut to Interaction Connect on the desktop
+      file {'C:/users/vagrant/desktop/Interaction Connect.url':
+        ensure  => present,
+        content => "[InternetShortcut]\nURL=http://localhost/client",
+        require => Exec['iisreset'],
       }
 
     }

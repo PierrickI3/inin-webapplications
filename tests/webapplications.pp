@@ -1,3 +1,3 @@
-class {'cicwebapplications::install::install':
+class {'webapplications::install':
   ensure                => installed,
 }
