@@ -4,7 +4,7 @@ include unzip
 # == Class: webapplications::install
 #
 # Installs CIC Web applications and configures them.
-# CIC Web Applications Zip files (i.e. CIC_Web_Applications_2015_R3.iso) should be in a shared folder 
+# CIC Web Applications Zip files (i.e. CIC_Web_Applications_2015_R3.iso) should be in a shared folder
 # linked to C:\daas-cache
 #
 # === Parameters
@@ -16,7 +16,7 @@ include unzip
 # === Examples
 #
 #  class {'cicwebapplications=::install':
-#   ensure                  => installed,
+#   ensure => installed,
 #  }
 #
 # === Authors
@@ -32,16 +32,9 @@ class webapplications::install (
   $ensure = installed,
 )
 {
-
   $daascache                        = 'C:/daas-cache/'
-  $currentversion                   = '2015_R3'
-  $latestpatch                      = 'Patch8'
+  $webapplicationszip               = "CIC_Web_Applications_${::cic_installed_major_version}_R${::cic_installed_release}.zip"
 
-  $webapplicationszip               = "CIC_Web_Applications_${currentversion}.zip"
-  $webapplicationslatestpatchzip    = "CIC_Web_Applications_${currentversion}_${latestpatch}.zip"
-  
-  $server                           = $::hostname
-  
   if ($::operatingsystem != 'Windows')
   {
     err('This module works on Windows only!')
@@ -61,6 +54,65 @@ class webapplications::install (
   {
     installed:
     {
+      ##################################
+      # APPLICATION REQUEST ROUTING V3 #
+      ##################################
+
+      # Download Microsoft Application Request Routing Version 3 for IIS
+      exec {'Download Microsoft Application Request Routing V3':
+        command  => "\$wc = New-Object System.Net.WebClient;\$wc.DownloadFile('http://download.microsoft.com/download/E/9/8/E9849D6A-020E-47E4-9FD0-A023E99B54EB/requestRouter_amd64.msi','${cache_dir}/requestRouter_amd64.msi')",
+        path     => $::path,
+        cwd      => $::system32,
+        timeout  => 900,
+        provider => powershell,
+      }
+
+      # Install the Microsoft Application Request Routing Version 3 for IIS
+      package {'Microsoft Application Request Routing V3':
+        ensure          => installed,
+        source          => "${cache_dir}/requestRouter_amd64.msi",
+        install_options => [
+          '/l*v',
+          'c:\\windows\\logs\\requestRouter_amd64.log',
+        ],
+        provider        => 'windows',
+        require         => Exec['Download Microsoft Application Request Routing V3'],
+      }
+
+      # Enable proxy settings
+      exec {'Enable proxy settings':
+        command  => 'Set-WebConfigurationProperty -pspath \'IIS:\' -filter "system.webServer/proxy" -name "enabled" -value "True"',
+        provider => powershell,
+        require  => Package['Microsoft Application Request Routing V3'],
+      }
+
+      #TODO Verify that the Preserve client IP in the following header text field contains “X-Forwarded-For”
+      # Verify that the Include TCP port from client IP checkbox is checked
+
+      ######################
+      # URL REWRITE MODULE #
+      ######################
+
+      # Download URL Rewrite module
+      exec {'Download URL Rewrite module':
+        command  => "\$wc = New-Object System.Net.WebClient;\$wc.DownloadFile('http://download.microsoft.com/download/C/9/E/C9E8180D-4E51-40A6-A9BF-776990D8BCA9/rewrite_amd64.msi','${cache_dir}/rewrite_amd64.msi')",
+        path     => $::path,
+        cwd      => $::system32,
+        timeout  => 900,
+        provider => powershell,
+      }
+
+      # Install URL Rewrite module
+      package {'Install URL Rewrite module':
+        ensure          => installed,
+        source          => "${cache_dir}/rewrite_amd64.msi",
+        install_options => [
+          '/l*v',
+          'c:\\windows\\logs\\rewrite_amd64.log',
+        ],
+        provider        => 'windows',
+        require         => Exec['Download URL Rewrite module'],
+      }
 
       ###################
       # CREATE WEB SITE #
@@ -79,167 +131,160 @@ class webapplications::install (
         require     => File['C:/inetpub/wwwroot/ININApps'],
       }
 
-      # Copy the web_files folder to inetpub\wwwroot
+      # Copy the web_files folder to inetpub\wwwroot\ININApps
       exec {'Copy web_files':
-        command  => 'Copy-Item C:\\Users\\vagrant\\AppData\\Local\\Temp\\ININApps\\web_files\\* C:\\inetpub\\wwwroot\\ININApps\\ -Recurse -Force',
+        command  => "Copy-Item ${cache_dir}\\ININApps\\web_files\\* C:\\inetpub\\wwwroot\\ININApps\\ -Recurse -Force",
         provider => powershell,
-        require  => Unzip['Unzip Web Applications'],
-      }
-
-      # Remove Default Web Site
-      iis_site {'Default Web Site':
-        ensure => absent,
-      }
-
-      # Create application pool (disable .Net runtime)
-      iis_apppool {'ININApps':
-        ensure                => present,
-        managedruntimeversion => '',
-      }
-
-      # Create a new site called ININApps
-      iis_site {'ININApps':
-        ensure   => present,
-        bindings => ['http/*:80:'],
         require  => [
-          Iis_Site['Default Web Site'],
-          Iis_Apppool['ININApps'],
+          Unzip['Unzip Web Applications'],
+          File['C:/inetpub/wwwroot/ININApps'],
         ],
       }
 
-      # Create virtual application
-      iis_app {'ININApps/':
-        ensure          => present,
-        applicationpool => 'ININApps',
-        require         => Iis_Site['ININApps'],
+      # Create App Pool
+      exec {'Add ININApps App Pool':
+        command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd add apppool /name:ININApps /managedRuntimeVersion:\"",
+        path    => $::path,
+        cwd     => $::system32,
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list apppool | findstr /l ININApps\"",
       }
 
       # Create virtual directory
-      iis_vdir {'ININApps/':
-        ensure       => present,
-        iis_app      => 'ININApps/',
-        physicalpath => 'C:\inetpub\wwwroot\ININApps',
-        require      => Iis_App['ININApps/'],
-      }
-
-      ##################################
-      # APPLICATION REQUEST ROUTING V3 #
-      ##################################
-
-      # Download Microsoft Application Request Routing Version 3 for IIS
-      pget {'Download Microsoft Application Request Routing V3':
-        source => 'http://download.microsoft.com/download/E/9/8/E9849D6A-020E-47E4-9FD0-A023E99B54EB/requestRouter_amd64.msi',
-        target => $cache_dir,
-      }
-
-      # Install the Microsoft Application Request Routing Version 3 for IIS
-      package {'Microsoft Application Request Routing V3':
-        ensure          => installed,
-        source          => "${cache_dir}/requestRouter_amd64.msi",
-        install_options => [
-          '/l*v',
-          'c:\\windows\\logs\\requestRouter_amd64.log',
+      exec {'Add ININApps Virtual Directory':
+        command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd add vdir /app.name:\"Default Web Site/\" /path:/ININApps /physicalPath:C:\\inetpub\\wwwroot\\ININApps\"",
+        path    => $::path,
+        cwd     => $::system32,
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list vdir | findstr /l ININApps\"",
+        require => [
+          Exec['Copy web_files'],
+          Exec['Add ININApps App Pool'],
         ],
-        provider        => 'windows',
-        require         => Pget['Download Microsoft Application Request Routing V3'],
       }
 
-      # Enable proxy settings
-      exec {'Enable proxy settings':
-        command  => 'Set-WebConfigurationProperty -pspath \'IIS:\' -filter "system.webServer/proxy" -name "enabled" -value "True"',
-        provider => powershell,
-        require  => Package['Microsoft Application Request Routing V3'],
-      }
+      ################
+      # IIS SETTINGS #
+      ################
 
-      #####################################
-      # UPDATE REQUEST FILTERING SETTINGS #
-      #####################################
-      # TODO: Use Powershell to do this
+      # Enable static content compression
+      exec {'Enable static content compression':
+        command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd set config /section:urlCompression /doStaticCompression:True\"",
+        path    => $::path,
+        cwd     => $::system32,
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list config /section:urlCompression | findstr /l urlCompression doStaticCompression | findstr /l true\"",
+      }
 
       # Update the maximum URL size in Request Filtering
-      exec{'set-max-url-size':
+      exec {'Set Max URL Size':
         command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd set config /section:requestfiltering /requestlimits.maxurl:8192\"",
         path    => $::path,
         cwd     => $::system32,
-        require => Iis_Vdir['ININApps/'],
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list config /section:requestfiltering | findstr /l \"requestLimits maxUrl\" | findstr 8192\"",
       }
 
       # Update the maximum query string size in Request Filtering
-      exec{'set-max-query-string-size':
+      exec{'Set Max Query String Size':
         command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd set config /section:requestfiltering /requestlimits.maxquerystring:8192\"",
         path    => $::path,
         cwd     => $::system32,
-        require => Iis_Vdir['ININApps/'],
-      }
-      
-      ######################
-      # URL REWRITE MODULE #
-      ######################
-
-      # Download URL Rewrite module
-      pget {'Download URL Rewrite module':
-        source => 'http://download.microsoft.com/download/C/9/E/C9E8180D-4E51-40A6-A9BF-776990D8BCA9/rewrite_amd64.msi',
-        target => $cache_dir,
-      }
-
-      # Install URL Rewrite module
-      package {'Install URL Rewrite module':
-        ensure          => installed,
-        source          => "${cache_dir}/rewrite_amd64.msi",
-        install_options => [
-          '/l*v',
-          'c:\\windows\\logs\\rewrite_amd64.log',
-        ],
-        provider        => 'windows',
-        require         => Pget['Download URL Rewrite module'],
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list config /section:requestfiltering | findstr /l \"requestLimits maxquerystring\" | findstr 8192\"",
       }
 
       ##############
       # WEB.CONFIG #
       ##############
 
-      # Add web.config file
       file {'C:/inetpub/wwwroot/ININApps/web.config':
         ensure  => present,
         content => template('webapplications/web.config.erb'),
-        require => [
-          Iis_Vdir['ININApps/'],
-          Exec['Enable proxy settings'],
-          Package['Install URL Rewrite module'],
-        ],
+        require => Exec['Add ININApps Virtual Directory'],
       }
 
-      # Add site server variables
-      file_line {'ININApps Server Variables':
-        ensure  => present,
-        path    => 'C:/Windows/System32/inetsrv/config/applicationHost.config',
-        line    => " \
-          <location path=\"ININApps\"> \
-            <system.webServer> \
-              <rewrite> \
-                <allowedServerVariables> \
-                  <add name=\"WEB_APP\" /> \
-                  <add name=\"ICWS_HOST\" /> \
-                  <add name=\"HTTP_ININ-ICWS-Original-URL\" /> \
-                </allowedServerVariables> \
-              </rewrite> \
-            </system.webServer> \
-          </location>",
-        after   => '</webFarms>',
-        require => File['C:/inetpub/wwwroot/ININApps/web.config'],
+      ##################
+      # CACHE SETTINGS #
+      ##################
+
+      # Set frequentHitThreshold to 1
+      /*
+      exec {'Set frequentHitThreshold to 1':
+        command  => 'Set-WebConfigurationProperty -pspath \'MACHINE/WEBROOT/APPHOST\' -filter \'system.webServer/serverRuntime\' -name \'frequentHitThreshold\' -value \'1\'',
+        provider => powershell,
+      }
+
+      # Set frequentHitTimePeriod to 00:10:00
+      exec {'Set frequentHitTimePeriod to 00:10:00':
+        command  => 'Set-WebConfigurationProperty -pspath \'MACHINE/WEBROOT/APPHOST\' -filter \'system.webServer/serverRuntime\' -name \'frequentHitTimePeriod\' -value \'00:10:00\'',
+        provider => powershell,
+      }
+      */
+
+      # /client/lib content should expire after 365 days
+      exec{'Set static content caching - client-lib':
+        command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd set config \"Default Web Site/ININApps/client/lib\" /section:staticContent /clientCache.cacheControlMode:UseMaxAge /clientCache.cacheControlMaxAge:365.00:00:00\"",
+        path    => $::path,
+        cwd     => $::system32,
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list config \"Default Web Site/ININApps/client/lib\" /section:staticContent | findstr /l \"clientCache.cacheControlMode\" | findstr 365\"",
+        require => Exec['Add ININApps Virtual Directory'],
+      }
+
+      # ONLY AVAILABLE IN 2016R1
+      # /client/addins content should expire immediately
+      /*
+      exec{'Set static content caching - client-addins':
+        command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd set config \"Default Web Site/ININApps/client/addins\" /section:staticContent /clientCache.cacheControlMode:NoControl\"",
+        path    => $::path,
+        cwd     => $::system32,
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list config \"Default Web Site/ININApps/client/addins\" /section:staticContent | findstr /l \"cacheControlMode\" | findstr /l NoControl\"",
+        require => Exec['Add ININApps Virtual Directory'],
+      }
+      */
+
+      # ONLY AVAILABLE IN 2016R1
+      # /client/config content should expire immediately
+      /*
+      exec{'Set static content caching - client-config':
+        command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd set config \"Default Web Site/ININApps/client/config\" /section:staticContent /clientCache.cacheControlMode:NoControl\"",
+        path    => $::path,
+        cwd     => $::system32,
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list config \"Default Web Site/ININApps/client/config\" /section:staticContent | findstr /l \"cacheControlMode\" | findstr /l NoControl\"",
+        require => Exec['Add ININApps Virtual Directory'],
+      }
+      */
+
+      # /client/index.html content should expire after 15 minutes
+      exec{'Set static content caching - index.html':
+        command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd set config \"Default Web Site/ININApps/client/index.html\" /section:staticContent /clientCache.cacheControlMode:UseMaxAge /clientCache.cacheControlMaxAge:0.00:15:00 /commitpath:\"Default Web Site/ININApps/client\"\"",
+        path    => $::path,
+        cwd     => $::system32,
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list config \"Default Web Site/ININApps/client/index.html\" /section:staticContent | findstr /l \"clientCache.cacheControlMode\" | findstr 15\"",
+        require => Exec['Add ININApps Virtual Directory'],
+      }
+
+      # /client/appSettings.json content should expire immediately
+      exec{'Set static content caching - appSettings.json':
+        command => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd set config \"Default Web Site/ININApps/client/appSettings.json\" /section:staticContent /clientCache.cacheControlMode:NoControl /commitpath:\"Default Web Site/ININApps/client\"\"",
+        path    => $::path,
+        cwd     => $::system32,
+        unless  => "cmd.exe /c \"%windir%\\system32\\inetsrv\\appcmd list config \"Default Web Site/ININApps/client/appSettings.json\" /section:staticContent | findstr /l \"clientCache.cacheControlMode\" | findstr NoControl\"",
+        require => Exec['Add ININApps Virtual Directory'],
       }
 
       # Reset IIS
       exec {'iisreset':
         path        => 'C:/Windows/System32',
         refreshonly => true,
-        require     => File_Line['ININApps Server Variables'],
+        require     => [
+          Exec['Set static content caching - client-lib'],
+          #Exec['Set static content caching - client-addins'],
+          #Exec['Set static content caching - client-config'],
+          Exec['Set static content caching - index.html'],
+          Exec['Set static content caching - appSettings.json'],
+        ],
       }
 
       # Add shortcut to Interaction Connect on the desktop
       file {'C:/users/vagrant/desktop/Interaction Connect.url':
         ensure  => present,
-        content => "[InternetShortcut]\nURL=http://localhost/client",
+        content => "[InternetShortcut]\nURL=http://${hostname}/client",
         require => Exec['iisreset'],
       }
 

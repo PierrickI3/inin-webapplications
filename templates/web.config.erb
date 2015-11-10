@@ -10,8 +10,7 @@
 					<set name="HTTP_ININ-ICWS-Original-URL"
 					value="{MapScheme:{HTTPS}}://{HTTP_HOST}{UNENCODED_URL}" replace="false" />
 				</serverVariables>
-				<action type="Rewrite" url="http://{ICWS_HOST}:8018{R:3}"
-				logRewrittenUrl="true" />
+				<action type="Rewrite" url="http://{ICWS_HOST}:8018{R:3}" logRewrittenUrl="true" />
 			</rule>
 		</rules>
 		<outboundRules>

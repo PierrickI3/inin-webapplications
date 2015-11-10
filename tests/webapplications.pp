@@ -1,3 +1,3 @@
 class {'webapplications::install':
-  ensure                => installed,
+  ensure => installed,
 }

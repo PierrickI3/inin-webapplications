@@ -1,4 +1,4 @@
-# == Define: php::unzip
+# == Define: unzip
 #
 # Extracts a ZIP archive on a Windows system.
 #
@@ -47,7 +47,7 @@ define unzip(
   $unless           = undef,
   $zipfile          = $name,
   $provider         = 'powershell',
-  $command_template = 'suitecrm/unzip.ps1.erb',
+  $command_template = 'webapplications/unzip.ps1.erb',
   $timeout          = 300,
 ) {
   validate_absolute_path($destination)
